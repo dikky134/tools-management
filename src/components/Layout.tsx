@@ -126,7 +126,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             {item.icon}
             <span className="truncate">{item.label}</span>
             {item.to === '/notifications' && unread > 0 && (
-              <span className="ml-auto bg-amber-500 text-zinc-900 text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-full">{unread}</span>
+              <span className="ml-auto bg-amber-500 text-zinc-900 text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-full">
+                {unread > 99 ? '99+' : unread}
+              </span>
             )}
           </NavLink>
         ))}
@@ -171,7 +173,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="ml-auto relative">
             <NavLink to="/notifications">
               <Icon d={ICONS.notifications} />
-              {unread > 0 && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-amber-500 rounded-full text-[9px] font-bold text-zinc-900 flex items-center justify-center">{unread}</span>}
+              {unread > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-3.5 h-3.5 px-0.5 bg-amber-500 rounded-full text-[9px] font-bold text-zinc-900 flex items-center justify-center">
+                  {unread > 99 ? '99+' : unread}
+                </span>
+              )}
             </NavLink>
           </div>
         </header>

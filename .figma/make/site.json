@@ -1,0 +1,10 @@
+{
+  "description": "Manage and track factory warehouse tools efficiently with real-time inventory updates and maintenance scheduling to optimize operations and reduce downtime.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
