@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../store';
 import { PageHeader, StatusBadge, SearchInput, Table, Tr, Td, Btn, Modal, Input, Select, Textarea, fmtDate, fmtCurrency } from '../components/ui';
 import type { Tool, ToolStatus, ToolCondition } from '../types';
+import { getUserFriendlyError } from '../utils/error';
+import ErrorMessage from '../components/ErrorMessage';
 
 const STATUS_OPTS = [
   { value: '', label: 'All Statuses' },
@@ -36,6 +38,8 @@ export default function Tools() {
   const [showModal, setShowModal] = useState(searchParams.get('action') === 'add');
   const [editTool, setEditTool] = useState<Tool | null>(null);
   const [form, setForm] = useState<ToolForm>(emptyForm);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const isAdmin = currentUser?.role === 'ADMIN';
 
@@ -47,35 +51,65 @@ export default function Tools() {
     return matchQ && matchStatus && matchCat;
   }), [tools, q, statusFilter, catFilter, categories]);
 
-  const openAdd = () => { setEditTool(null); setForm(emptyForm); setShowModal(true); };
+  const openAdd = () => {
+    setEditTool(null);
+    setForm(emptyForm);
+    setError(null);
+    setShowModal(true);
+  };
+
   const openEdit = (t: Tool) => {
     setEditTool(t);
-    setForm({ code: t.code, name: t.name, categoryId: t.categoryId, brand: t.brand, model: t.model, serialNumber: t.serialNumber, description: t.description, purchaseDate: t.purchaseDate, purchasePrice: String(t.purchasePrice), location: t.location, condition: t.condition, status: t.status });
+    setForm({
+      code: t.code,
+      name: t.name,
+      categoryId: t.categoryId,
+      brand: t.brand,
+      model: t.model,
+      serialNumber: t.serialNumber,
+      description: t.description,
+      purchaseDate: t.purchaseDate,
+      purchasePrice: String(t.purchasePrice),
+      location: t.location,
+      condition: t.condition,
+      status: t.status,
+    });
+
+    setError(null);
     setShowModal(true);
   };
 
   const handleSave = async () => {
-    if (!form.name || !form.code) return;
+    if (!form.name.trim() || !form.code.trim()) {
+      setError('Tool code and tool name are required.');
+      return;
+    }
+
+    setError(null);
+    setLoading(true);
 
     try {
       const payload = {
         ...form,
-        purchasePrice:
-          Number(form.purchasePrice) || 0,
+        code: form.code.trim(),
+        name: form.name.trim(),
+        purchasePrice: Number(form.purchasePrice) || 0,
       };
 
       if (editTool) {
         await updateTool(editTool.id, payload);
+
       } else {
         await addTool(payload);
+
       }
 
       setShowModal(false);
     } catch (error) {
-      console.error(
-        'Failed to save tool:',
-        error,
-      );
+      console.error('Failed to save tool:', error);
+      setError(getUserFriendlyError(error));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -142,7 +176,7 @@ export default function Tools() {
       </div>
 
       {/* Add/Edit Modal */}
-      <Modal open={showModal} onClose={() => setShowModal(false)} title={editTool ? 'Edit Tool' : 'Add New Tool'} size="xl">
+      <Modal open={showModal} onClose={() => {setShowModal(false); setError(null)}} title={editTool ? 'Edit Tool' : 'Add New Tool'} size="xl">
         <div className="grid grid-cols-2 gap-4">
           <Input label="Tool Code *" value={form.code} onChange={f('code')} placeholder="ALT-009" />
           <Input label="Tool Name *" value={form.name} onChange={f('name')} placeholder="Electric Drill" />
@@ -159,9 +193,23 @@ export default function Tools() {
             <Textarea label="Description" value={form.description} onChange={f('description')} rows={2} placeholder="Brief description of this tool..." />
           </div>
         </div>
+        <ErrorMessage
+          message={error}
+          onClose={() => setError(null)}
+        />
         <div className="flex justify-end gap-2 mt-5">
           <Btn variant="secondary" onClick={() => setShowModal(false)}>Cancel</Btn>
-          <Btn onClick={handleSave}>{editTool ? 'Save Changes' : 'Add Tool'}</Btn>
+          <Btn
+            onClick={() => void handleSave()}
+            loading={loading}
+            disabled={
+              loading ||
+              !form.name.trim() ||
+              !form.code.trim()
+            }
+          >
+            {editTool ? 'Save Changes' : 'Add Tool'}
+          </Btn>
         </div>
       </Modal>
     </div>
