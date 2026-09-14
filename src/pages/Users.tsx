@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react';
 import { useApp } from '../store';
 import { PageHeader, StatusBadge, SearchInput, Table, Tr, Td, Btn, Modal, Input, Select, ConfirmDialog } from '../components/ui';
 import type { Role, User } from '../types';
+import { getUserFriendlyError } from '../utils/error';
+import ErrorMessage from '../components/ErrorMessage';
 
 const ROLE_OPTS = [{ value: 'EMPLOYEE', label: 'Employee' }, { value: 'MECHANIC', label: 'Mechanic' }, { value: 'ADMIN', label: 'Admin' }];
 const DEPT_OPTS = [
@@ -24,6 +26,9 @@ export default function Users() {
   const [editUser, setEditUser] = useState<User | null>(null);
   const [form, setForm] = useState<UserForm>(emptyForm);
   const [confirmDeactivate, setConfirmDeactivate] = useState<User | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [actionUserId, setActionUserId] = useState<string | null>(null);
 
   const filtered = useMemo(() => users.filter(u => {
     const matchQ = !q || [u.name, u.employeeId, u.email, u.department].some(v => v.toLowerCase().includes(q.toLowerCase()));
@@ -31,37 +36,63 @@ export default function Users() {
     return matchQ && matchRole;
   }), [users, q, roleFilter]);
 
-  const openAdd = () => { setEditUser(null); setForm(emptyForm); setShowModal(true); };
+  const openAdd = () => {
+    setEditUser(null);
+    setForm(emptyForm);
+    setError(null);
+    setShowModal(true);
+  };
+
   const openEdit = (u: User) => {
     setEditUser(u);
-    setForm({ name: u.name, employeeId: u.employeeId, email: u.email, phone: u.phone, department: u.department, role: u.role });
+    setForm({
+      name: u.name,
+      employeeId: u.employeeId,
+      email: u.email,
+      phone: u.phone,
+      department: u.department,
+      role: u.role,
+    });
+    setError(null);
     setShowModal(true);
   };
 
   const handleSave = async () => {
-    if (!form.name || !form.employeeId) {
+    if (!form.name.trim() || !form.employeeId.trim()) {
+      setError('Full name and Employee ID are required.');
       return;
     }
+
+    setError(null);
+    setLoading(true);
 
     try {
       if (editUser) {
         await updateUser(
           editUser.id,
-          form,
+          {
+            ...form,
+            name: form.name.trim(),
+            employeeId: form.employeeId.trim(),
+          },
         );
       } else {
         await addUser({
           ...form,
+          name: form.name.trim(),
+          employeeId: form.employeeId.trim(),
           status: 'ACTIVE',
         });
       }
 
       setShowModal(false);
+      setEditUser(null);
+      setForm(emptyForm);
     } catch (error) {
-      console.error(
-        'Failed to save user:',
-        error,
-      );
+      console.error('Failed to save user:', error);
+      setError(getUserFriendlyError(error));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -74,7 +105,10 @@ export default function Users() {
     <div className="space-y-5">
       <PageHeader title="User Management" subtitle={`${users.length} users`}
         action={<Btn onClick={openAdd}>+ Add User</Btn>} />
-
+      <ErrorMessage
+        message={error}
+        onClose={() => setError(null)}
+      />
       <div className="flex gap-2">
         <div className="flex-1"><SearchInput value={q} onChange={setQ} placeholder="Search users..." /></div>
         <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)}
@@ -115,28 +149,35 @@ export default function Users() {
                   <div className="flex gap-3">
                     <button onClick={() => openEdit(u)} className="text-xs text-zinc-500 hover:text-amber-400 transition-colors">Edit</button>
                     {u.status === 'ACTIVE' && (
-                      <button onClick={() => setConfirmDeactivate(u)} className="text-xs text-zinc-500 hover:text-red-400 transition-colors">Deactivate</button>
+                      <button onClick={() => { setError(null); setConfirmDeactivate(u);}} className="text-xs text-zinc-500 hover:text-red-400 transition-colors">Deactivate</button>
                     )}
                     {u.status === 'INACTIVE' && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            await updateUserStatus(
-                              u.id,
-                              'ACTIVE',
-                            );
-                          } catch (error) {
-                            console.error(
-                              'Failed to activate user:',
-                              error,
-                            );
-                          }
-                        }}
-                        className="text-xs text-zinc-500 hover:text-emerald-400 transition-colors"
-                      >
-                        Activate
-                      </button>
-                    )}
+                    <button
+                      onClick={async () => {
+                        setError(null);
+                        setActionUserId(u.id);
+
+                        try {
+                          await updateUserStatus(
+                            u.id,
+                            'ACTIVE',
+                          );
+                        } catch (error) {
+                          console.error(
+                            'Failed to activate user:',
+                            error,
+                          );
+                          setError(getUserFriendlyError(error));
+                        } finally {
+                          setActionUserId(null);
+                        }
+                      }}
+                      disabled={actionUserId === u.id}
+                      className="text-xs text-zinc-500 hover:text-emerald-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {actionUserId === u.id ? 'Activating...' : 'Activate'}
+                    </button>
+                  )}
                   </div>
                 </Td>
               </Tr>
@@ -154,6 +195,10 @@ export default function Users() {
           <Select label="Role" value={form.role} onChange={f('role') as any} options={ROLE_OPTS} />
           <Select label="Department" value={form.department} onChange={f('department') as any} options={DEPT_OPTS} />
         </div>
+        <ErrorMessage
+          message={error}
+          onClose={() => setError(null)}
+        />
         <div className="flex justify-end gap-2 mt-5">
           <Btn variant="secondary" onClick={() => setShowModal(false)}>Cancel</Btn>
           <Btn onClick={handleSave}>{editUser ? 'Save Changes' : 'Add User'}</Btn>
@@ -168,6 +213,9 @@ export default function Users() {
             return;
           }
 
+          setError(null);
+          setActionUserId(confirmDeactivate.id);
+
           try {
             await updateUserStatus(
               confirmDeactivate.id,
@@ -180,6 +228,12 @@ export default function Users() {
               'Failed to deactivate user:',
               error,
             );
+
+            setError(
+              getUserFriendlyError(error),
+            );
+          } finally {
+            setActionUserId(null);
           }
         }}
         title="Deactivate User"

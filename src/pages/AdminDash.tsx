@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../store';
 import { StatCard, StatusBadge, timeAgo } from '../components/ui';
@@ -22,9 +23,8 @@ export default function AdminDash() {
   } = useApp();
   const navigate = useNavigate();
 
-  const monthlyData = Array.from(
-    { length: 6 },
-    (_, index) => {
+  const monthlyData = useMemo(() => {
+    return Array.from({ length: 6 }, (_, index) => {
       const date = new Date();
 
       date.setMonth(date.getMonth() - (5 - index));
@@ -53,8 +53,7 @@ export default function AdminDash() {
       }).length;
 
       const damageCount = damageReports.filter(d => {
-        const created =
-          new Date(d.reportedAt);
+        const created = new Date(d.reportedAt);
 
         return (
           created.getFullYear() === year &&
@@ -70,10 +69,10 @@ export default function AdminDash() {
         returns: returnsCount,
         damage: damageCount,
       };
-    }
-  );
+    });
+  }, [borrowings, damageReports]);
 
-  const stats = {
+  const stats = useMemo(() => ({
     total: tools.length,
     available: tools.filter(t => t.status === 'AVAILABLE').length,
     borrowed: tools.filter(t => t.status === 'BORROWED').length,
@@ -116,30 +115,41 @@ export default function AdminDash() {
         m.status === 'IN_PROGRESS' ||
         m.status === 'WAITING_FOR_PARTS'
     ).length,
-  };
+  }), [
+    tools,
+    users,
+    mechanics,
+    borrowings,
+    maintenanceRequests,
+  ]);
 
-  const pieData = [
+  const pieData = useMemo(() => [
     { name: 'Available', value: stats.available, color: '#4ade80' },
     { name: 'Borrowed', value: stats.borrowed, color: '#60a5fa' },
     { name: 'Damaged', value: stats.damaged, color: '#f87171' },
     { name: 'Maintenance', value: stats.maintenance, color: '#fb923c' },
     { name: 'Inactive', value: stats.inactive, color: '#52525b' },
-  ].filter(d => d.value > 0);
+  ].filter(d => d.value > 0), [stats]);
 
-  const toolUsageData = tools.map(t => ({
-    name: t.code,
-    borrows: borrowings.filter(b => b.toolId === t.id).length,
-  })).sort((a, b) => b.borrows - a.borrows).slice(0, 6);
+  const toolUsageData = useMemo(() => {
+    return tools
+      .map(t => ({
+        name: t.code,
+        borrows: borrowings.filter(b => b.toolId === t.id).length,
+      }))
+      .sort((a, b) => b.borrows - a.borrows)
+      .slice(0, 6);
+  }, [tools, borrowings]);
 
-  const recentActivity = activityLogs.slice(0, 8);
-  const usersMap = Object.fromEntries(users.map(u => [u.id, u]));
+  const recentActivity = useMemo(
+    () => activityLogs.slice(0, 8),
+    [activityLogs]
+  );
 
-  const ACTION_LABELS: Record<string, string> = {
-    BORROW_TOOL: '📤 Borrowed', RETURN_TOOL: '📥 Returned', REPORT_DAMAGE: '⚠️ Damage Reported',
-    START_MAINTENANCE: '🔧 Started Maintenance', COMPLETE_MAINTENANCE: '✅ Completed Maintenance',
-    ASSIGN_MECHANIC: '👤 Mechanic Assigned', CREATE_TOOL: '➕ Tool Added',
-    ACCEPT_TASK: '🔑 Task Accepted', UPDATE_STATUS: '🔄 Status Updated',
-  };
+  const usersMap = useMemo(
+    () => Object.fromEntries(users.map(u => [u.id, u])),
+    [users]
+  );
 
   const unreadNotifications = notifications.filter(
     n =>
@@ -271,23 +281,47 @@ export default function AdminDash() {
         {/* Monthly Borrowings */}
         <div className="lg:col-span-2 bg-zinc-900 border border-zinc-800 rounded-sm p-4">
           <p className="text-xs font-mono text-zinc-500 uppercase tracking-widest mb-4">Monthly Borrowing Trend</p>
-          <ResponsiveContainer width="100%" height={180}>
-            <AreaChart data={monthlyData}>
-              <defs>
-                <linearGradient id="gradBorrow" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-              <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#71717a', fontFamily: 'JetBrains Mono' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: '#71717a', fontFamily: 'JetBrains Mono' }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={chartTooltipStyle} labelStyle={{ color: '#e4e4e7' }} itemStyle={{ color: '#a1a1aa' }} />
-              <Area type="monotone" dataKey="borrowings" stroke="#f59e0b" strokeWidth={2} fill="url(#gradBorrow)" name="Borrowings" />
-              <Area type="monotone" dataKey="returns" stroke="#4ade80" strokeWidth={1.5} fill="none" strokeDasharray="4 2" name="Returns" />
-              <Area type="monotone" dataKey="damage" stroke="#f87171" strokeWidth={1.5} fill="none" strokeDasharray="2 2" name="Damage Reports" />
-            </AreaChart>
-          </ResponsiveContainer>
+          {toolUsageData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={150}>
+              <BarChart data={toolUsageData} barSize={24}>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#27272a"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="name"
+                  tick={{
+                    fontSize: 10,
+                    fill: '#71717a',
+                    fontFamily: 'JetBrains Mono',
+                  }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{
+                    fontSize: 10,
+                    fill: '#71717a',
+                    fontFamily: 'JetBrains Mono',
+                  }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip contentStyle={chartTooltipStyle} />
+                <Bar
+                  dataKey="borrows"
+                  fill="#f59e0b"
+                  radius={[2, 2, 0, 0]}
+                  name="Total Borrows"
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[150px] flex items-center justify-center text-sm text-zinc-600">
+              No borrowing data available
+            </div>
+          )}
         </div>
 
         {/* Pie chart */}

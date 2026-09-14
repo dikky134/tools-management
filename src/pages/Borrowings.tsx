@@ -23,14 +23,14 @@ export default function Borrowings() {
         (tab === 'Returned' && b.status === 'RETURNED');
       return matchQ && matchTab;
     }).sort((a, b) => new Date(b.borrowedAt).getTime() - new Date(a.borrowedAt).getTime());
-  }, [borrowings, q, tab, tools, users, currentUser, isAdmin]);
+  }, [borrowings, q, tab, tools, users, currentUser?.id, isAdmin]);
 
   const counts = useMemo(() => ({
     All: borrowings.filter(b => isAdmin || b.borrowerId === currentUser?.id).length,
     Active: borrowings.filter(b => (isAdmin || b.borrowerId === currentUser?.id) && b.status === 'ACTIVE' && new Date(b.expectedReturn) >= new Date()).length,
     Overdue: borrowings.filter(b => (isAdmin || b.borrowerId === currentUser?.id) && b.status === 'ACTIVE' && new Date(b.expectedReturn) < new Date()).length,
     Returned: borrowings.filter(b => (isAdmin || b.borrowerId === currentUser?.id) && b.status === 'RETURNED').length,
-  }), [borrowings, currentUser, isAdmin]);
+  }), [borrowings, currentUser?.id, isAdmin]);
 
   return (
     <div className="space-y-5">

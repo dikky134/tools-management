@@ -1,7 +1,16 @@
 import { useState } from 'react';
 import { useApp } from '../store';
-import { PageHeader, Btn, Modal, Input, Textarea, ConfirmDialog } from '../components/ui';
+import {
+  PageHeader,
+  Btn,
+  Modal,
+  Input,
+  Textarea,
+  ConfirmDialog,
+} from '../components/ui';
 import type { ToolCategory } from '../types';
+import { getUserFriendlyError } from '../utils/error';
+import ErrorMessage from '../components/ErrorMessage';
 
 const PRESET_COLORS = ['#f59e0b', '#60a5fa', '#4ade80', '#fb923c', '#a78bfa', '#f87171', '#94a3b8', '#71717a'];
 
@@ -11,29 +20,66 @@ export default function Categories() {
   const [edit, setEdit] = useState<ToolCategory | null>(null);
   const [form, setForm] = useState({ name: '', description: '', color: '#f59e0b' });
   const [confirmDelete, setConfirmDelete] = useState<ToolCategory | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const openAdd = () => { setEdit(null); setForm({ name: '', description: '', color: '#f59e0b' }); setShowModal(true); };
-  const openEdit = (c: ToolCategory) => { setEdit(c); setForm({ name: c.name, description: c.description, color: c.color }); setShowModal(true); };
+  const openAdd = () => {
+    setEdit(null);
+    setForm({
+      name: '',
+      description: '',
+      color: '#f59e0b',
+    });
+    setError(null);
+    setShowModal(true);
+  };
+
+  const openEdit = (c: ToolCategory) => {
+    setEdit(c);
+    setForm({
+      name: c.name,
+      description: c.description,
+      color: c.color,
+    });
+    setError(null);
+    setShowModal(true);
+  };
 
   const handleSave = async () => {
-    if (!form.name) return;
+    if (!form.name.trim()) {
+      setError('Category name is required.');
+      return;
+    }
+
+    setError(null);
+    setLoading(true);
 
     try {
+      const payload = {
+        ...form,
+        name: form.name.trim(),
+        description: form.description.trim(),
+      };
+
       if (edit) {
-        await updateCategory(
-          edit.id,
-          form,
-        );
+        await updateCategory(edit.id, payload);
       } else {
-        await addCategory(form);
+        await addCategory(payload);
       }
 
       setShowModal(false);
+      setEdit(null);
+      setForm({
+        name: '',
+        description: '',
+        color: '#f59e0b',
+      });
     } catch (error) {
-      console.error(
-        'Failed to save category:',
-        error,
-      );
+      console.error('Failed to save category:', error);
+      setError(getUserFriendlyError(error));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -41,7 +87,10 @@ export default function Categories() {
     <div className="space-y-5">
       <PageHeader title="Tool Categories" subtitle={`${categories.length} categories`}
         action={<Btn onClick={openAdd}>+ Add Category</Btn>} />
-
+      <ErrorMessage
+        message={error}
+        onClose={() => setError(null)}
+      />
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {categories.map(c => {
           const count = tools.filter(t => t.categoryId === c.id).length;
@@ -85,32 +134,62 @@ export default function Categories() {
               ))}
             </div>
           </div>
+          <ErrorMessage
+            message={error}
+            onClose={() => setError(null)}
+          />
           <div className="flex justify-end gap-2 mt-2">
-            <Btn variant="secondary" onClick={() => setShowModal(false)}>Cancel</Btn>
-            <Btn onClick={handleSave}>{edit ? 'Save' : 'Add Category'}</Btn>
+            <Btn
+              variant="secondary"
+              onClick={() => {
+                setShowModal(false);
+                setError(null);
+              }}
+            >
+              Cancel
+            </Btn>
+
+            <Btn
+              onClick={() => void handleSave()}
+              loading={loading}
+              disabled={loading || !form.name.trim()}
+            >
+              {edit ? 'Save' : 'Add Category'}
+            </Btn>
           </div>
         </div>
       </Modal>
 
       <ConfirmDialog
-        open={confirmDelete !== null}
-        onClose={() => setConfirmDelete(null)}
-        onConfirm={async () => {
-          if (!confirmDelete) return;
-
-          try {
-            await deleteCategory(confirmDelete.id);
-            setConfirmDelete(null);
-          } catch (error) {
-            console.error(
-              'Failed to delete category:',
-              error,
-            );
-          }
-        }}
+        open={!!confirmDelete}
         title="Delete Category"
-        message={`Are you sure you want to delete "${confirmDelete?.name}"? This cannot be undone.`}
-        confirmLabel="Delete"
+        message={
+          confirmDelete
+            ? `Are you sure you want to delete "${confirmDelete.name}"?`
+            : ''
+        }
+        onClose={() => {
+          if (deleteLoading) return;
+          setConfirmDelete(null);
+        }}
+        onConfirm={() => {
+          void (async () => {
+            if (!confirmDelete) return;
+
+            setError(null);
+            setDeleteLoading(true);
+
+            try {
+              await deleteCategory(confirmDelete.id);
+              setConfirmDelete(null);
+            } catch (error) {
+              console.error('Failed to delete category:', error);
+              setError(getUserFriendlyError(error));
+            } finally {
+              setDeleteLoading(false);
+            }
+          })();
+        }}
         danger
       />
     </div>

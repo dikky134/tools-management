@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../store';
 import { StatusBadge, Btn, StatCard, fmtDate } from '../components/ui';
 import type { MechanicAvailability, MaintenanceRequest } from '../types';
+import { getUserFriendlyError } from '../utils/error';
+import ErrorMessage from '../components/ErrorMessage';
 
 export default function MechanicDash() {
   const {
@@ -14,18 +16,48 @@ export default function MechanicDash() {
   } = useApp();
   const navigate = useNavigate();
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [taskLoadingId, setTaskLoadingId] = useState<string | null>(null);
 
   if (!currentUser) return null;
 
-  const myTasks = maintenanceRequests.filter(m => m.assignedMechanic === currentUser.id);
-  const pending = myTasks.filter(m => m.status === 'ASSIGNED');
-  const inProgress = myTasks.filter(m => ['IN_PROGRESS', 'WAITING_FOR_PARTS'].includes(m.status));
-  const completed = myTasks.filter(m => m.status === 'COMPLETED').slice(0, 5);
+  const myTasks = useMemo(
+    () =>
+      maintenanceRequests.filter(
+        m => m.assignedMechanic === currentUser.id,
+      ),
+    [maintenanceRequests, currentUser.id],
+  );
 
-  const damagedTools = tools.filter(
-    tool =>
-      tool.status === 'DAMAGED' ||
-      tool.status === 'MAINTENANCE',
+  const pending = useMemo(
+    () => myTasks.filter(m => m.status === 'ASSIGNED'),
+    [myTasks],
+  );
+
+  const inProgress = useMemo(
+    () =>
+      myTasks.filter(m =>
+        ['IN_PROGRESS', 'WAITING_FOR_PARTS'].includes(m.status),
+      ),
+    [myTasks],
+  );
+
+  const completed = useMemo(
+    () =>
+      myTasks
+        .filter(m => m.status === 'COMPLETED')
+        .slice(0, 5),
+    [myTasks],
+  );
+
+  const damagedTools = useMemo(
+    () =>
+      tools.filter(
+        tool =>
+          tool.status === 'DAMAGED' ||
+          tool.status === 'MAINTENANCE',
+      ),
+    [tools],
   );
 
   const mechStatus = currentUser.mechanicStatus ?? 'AVAILABLE';
@@ -40,8 +72,12 @@ export default function MechanicDash() {
       <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-sm p-4 space-y-3">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <p className="text-xs font-mono text-zinc-500">{tool?.code}</p>
-            <p className="text-sm font-semibold text-zinc-200">{tool?.name}</p>
+            <p className="text-xs font-mono text-zinc-500">
+              {tool?.code ?? '—'}
+            </p>
+            <p className="text-sm font-semibold text-zinc-200">
+              {tool?.name ?? 'Tool unavailable'}
+            </p>
           </div>
           <div className="flex gap-1.5 flex-shrink-0">
             <StatusBadge status={task.priority} />
@@ -54,8 +90,27 @@ export default function MechanicDash() {
         )}
         <div className="flex gap-2">
           {task.status === 'ASSIGNED' && (
-            <Btn size="sm" onClick={() => startTask(task.id)}>
-              Accept & Start
+            <Btn
+              size="sm"
+              onClick={() => {
+                void (async () => {
+                  setStatusError(null);
+                  setTaskLoadingId(task.id);
+
+                  try {
+                    await startTask(task.id);
+                  } catch (error) {
+                    console.error('Failed to start maintenance task:', error);
+                    setStatusError(getUserFriendlyError(error));
+                  } finally {
+                    setTaskLoadingId(null);
+                  }
+                })();
+              }}
+              loading={taskLoadingId === task.id}
+              disabled={taskLoadingId !== null}
+            >
+              {taskLoadingId === task.id ? 'Starting...' : 'Accept & Start'}
             </Btn>
           )}
           {task.status === 'IN_PROGRESS' && (
@@ -74,6 +129,10 @@ export default function MechanicDash() {
     <div className="space-y-6">
       {/* Header + Availability */}
       <div className="flex items-start justify-between gap-4">
+        <ErrorMessage
+          message={statusError}
+          onClose={() => setStatusError(null)}
+        />
         <div>
           <h1 className="text-xl font-bold font-display text-zinc-100">
             Mechanic Dashboard
@@ -93,23 +152,28 @@ export default function MechanicDash() {
           {(['AVAILABLE', 'OFF_DUTY'] as MechanicAvailability[]).map(s => (
             <button 
               key={s} 
-              onClick={async () => {
-                if (mechStatus === s) return;
+              onClick={() => {
+                void (async () => {
+                  if (mechStatus === s || statusLoading) return;
 
-                try {
-                  await updateMechanicStatus(
-                    currentUser.id,
-                    s,
-                  );
-                } catch (error) {
-                  console.error(
-                    'Failed to update mechanic status:',
-                    error,
-                  );
-                }
+                  setStatusError(null);
+                  setStatusLoading(true);
+
+                  try {
+                    await updateMechanicStatus(currentUser.id, s);
+                  } catch (error) {
+                    console.error(
+                      'Failed to update mechanic status:',
+                      error,
+                    );
+                    setStatusError(getUserFriendlyError(error));
+                  } finally {
+                    setStatusLoading(false);
+                  }
+                })();
               }}
-              disabled={mechStatus === s}
-              className={`flex-1 py-2 text-xs font-mono font-bold rounded-sm border transition-all disabled:cursor-default ${
+              disabled={mechStatus === s || statusLoading}
+              className={`flex-1 py-2 text-xs font-mono font-bold rounded-sm border transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
                 mechStatus === s
                   ? s === 'AVAILABLE' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
                     : s === 'BUSY' ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
@@ -252,8 +316,12 @@ export default function MechanicDash() {
                 <div key={t.id} className="flex items-center gap-3 px-4 py-3">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-zinc-300">{tool?.name}</p>
-                    <p className="text-[10px] font-mono text-zinc-600">{tool?.code} · {fmtDate(t.completedAt)}</p>
+                    <p className="text-xs text-zinc-300">
+                      {tool?.name ?? 'Tool unavailable'}
+                    </p>
+                    <p className="text-[10px] font-mono text-zinc-600">
+                      {tool?.code ?? '—'} · {fmtDate(t.completedAt)}
+                    </p>
                   </div>
                   <StatusBadge status={t.repairResult ?? 'COMPLETED'} />
                 </div>
@@ -264,11 +332,10 @@ export default function MechanicDash() {
       )}
 
       {statusError && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-sm px-4 py-3">
-          <p className="text-xs text-red-400 font-mono">
-            {statusError}
-          </p>
-        </div>
+        <ErrorMessage
+          message={statusError}
+          onClose={() => setStatusError(null)}
+        />
       )}
     </div>
   );

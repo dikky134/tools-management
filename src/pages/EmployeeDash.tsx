@@ -1,6 +1,7 @@
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../store';
-import { StatCard, StatusBadge, fmt, fmtTime } from '../components/ui';
+import { StatCard, StatusBadge, fmtTime } from '../components/ui';
 
 export default function EmployeeDash() {
    const {
@@ -15,25 +16,38 @@ export default function EmployeeDash() {
 
   if (!currentUser) return null;
 
-  const myActive = borrowings.filter(
-    b =>
-      b.borrowerId === currentUser.id &&
-      b.status === 'ACTIVE',
+  const myActive = useMemo(
+    () =>
+      borrowings.filter(
+        b =>
+          b.borrowerId === currentUser.id &&
+          b.status === 'ACTIVE',
+      ),
+    [borrowings, currentUser.id],
   );
 
-  const myHistory = borrowings.filter(
-    b =>
-      b.borrowerId === currentUser.id &&
-      b.status !== 'ACTIVE',
+  const myHistory = useMemo(
+    () =>
+      borrowings.filter(
+        b =>
+          b.borrowerId === currentUser.id &&
+          b.status !== 'ACTIVE',
+      ),
+    [borrowings, currentUser.id],
   );
 
-  const myNotifs = notifications.filter(
-    n =>
-      n.userId === currentUser.id &&
-      !n.read,
+  const myNotifs = useMemo(
+    () =>
+      notifications.filter(
+        n =>
+          n.userId === currentUser.id &&
+          !n.read,
+      ),
+    [notifications, currentUser.id],
   );
 
   const isOverdue = (b: typeof borrowings[0]) =>
+    b.status === 'ACTIVE' &&
     new Date(b.expectedReturn) < new Date();
 
   return (
@@ -117,7 +131,6 @@ export default function EmployeeDash() {
                   bg: 'bg-emerald-500/10',
                   border: 'border-emerald-500/20',
                 },
-
                 BUSY: {
                   label: 'BUSY',
                   dot: 'bg-orange-500',
@@ -125,7 +138,6 @@ export default function EmployeeDash() {
                   bg: 'bg-orange-500/10',
                   border: 'border-orange-500/20',
                 },
-
                 OFF_DUTY: {
                   label: 'OFF DUTY',
                   dot: 'bg-zinc-500',
@@ -133,7 +145,13 @@ export default function EmployeeDash() {
                   bg: 'bg-zinc-800',
                   border: 'border-zinc-700',
                 },
-              }[status];
+              }[status] ?? {
+                label: 'UNKNOWN',
+                dot: 'bg-zinc-500',
+                text: 'text-zinc-500',
+                bg: 'bg-zinc-800',
+                border: 'border-zinc-700',
+              };
 
               return (
                 <div
@@ -193,9 +211,11 @@ export default function EmployeeDash() {
                     </svg>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-zinc-200 truncate">{tool?.name}</p>
+                    <p className="text-sm font-semibold text-zinc-200 truncate">
+                      {tool?.name ?? 'Tool unavailable'}
+                    </p>
                     <p className="text-[10px] font-mono text-zinc-600">
-                      Due {fmtTime(b.expectedReturn)} · {tool?.code}
+                      Due {fmtTime(b.expectedReturn)} · {tool?.code ?? '—'}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
