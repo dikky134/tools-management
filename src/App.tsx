@@ -10,7 +10,6 @@ import Tools from './pages/Tools';
 import ToolDetail from './pages/ToolDetail';
 import Borrowings from './pages/Borrowings';
 import Maintenance from './pages/Maintenance';
-import Scan from './pages/Scan';
 import MyTools from './pages/MyTools';
 import MyHistory from './pages/MyHistory';
 import Notifications from './pages/Notifications';
@@ -19,7 +18,7 @@ import Categories from './pages/Categories';
 import Reports from './pages/Reports';
 import ActivityLogs from './pages/ActivityLogs';
 import Profile from './pages/Profile';
-import ScanTool from './pages/ScanTool';
+import Scan from './pages/Scan';
 
 function AuthLoadingScreen() {
   return (

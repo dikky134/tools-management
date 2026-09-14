@@ -1,57 +1,134 @@
 import { useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../store';
-import { StatusBadge, Btn, Modal, Select, Textarea, Input, fmtDate, fmt, fmtCurrency } from '../components/ui';
+import {
+  StatusBadge,
+  Btn,
+  Modal,
+  Select,
+  Textarea,
+  Input,
+  fmtDate,
+  fmt,
+  fmtCurrency,
+} from '../components/ui';
 import { QRCodeSVG } from 'qrcode.react';
+import { getUserFriendlyError } from '../utils/error';
 import type { ToolCondition, Priority } from '../types';
+import ErrorMessage from '../components/ErrorMessage';
 
 export default function ToolDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { tools, categories, borrowings, maintenanceRequests, users, currentUser, borrowTool, returnTool, reportDamage } = useApp();
+
+  const {
+    tools,
+    categories,
+    borrowings,
+    maintenanceRequests,
+    users,
+    currentUser,
+    borrowTool,
+    returnTool,
+    reportDamage,
+  } = useApp();
 
   const tool = tools.find(t => t.id === id);
-  const cat = tool ? categories.find(c => c.id === tool.categoryId) : null;
-  const activeBorrow = tool ? borrowings.find(b => b.toolId === tool.id && b.status === 'ACTIVE') : null;
-  const borrower = activeBorrow ? users.find(u => u.id === activeBorrow.borrowerId) : null;
-  const activeMaint = tool ? maintenanceRequests.find(m => m.toolId === tool.id && ['PENDING', 'ASSIGNED', 'IN_PROGRESS', 'WAITING_FOR_PARTS'].includes(m.status)) : null;
-  const mechanic = activeMaint?.assignedMechanic ? users.find(u => u.id === activeMaint.assignedMechanic) : null;
-  const toolHistory = borrowings.filter(b => b.toolId === id).sort((a, b) => new Date(b.borrowedAt).getTime() - new Date(a.borrowedAt).getTime());
+  const cat = tool
+    ? categories.find(c => c.id === tool.categoryId)
+    : null;
+
+  const activeBorrow = tool
+    ? borrowings.find(
+        b =>
+          b.toolId === tool.id &&
+          b.status === 'ACTIVE'
+      )
+    : null;
+
+  const borrower = activeBorrow
+    ? users.find(u => u.id === activeBorrow.borrowerId)
+    : null;
+
+  const activeMaint = tool
+    ? maintenanceRequests.find(
+        m =>
+          m.toolId === tool.id &&
+          [
+            'PENDING',
+            'ASSIGNED',
+            'IN_PROGRESS',
+            'WAITING_FOR_PARTS',
+          ].includes(m.status)
+      )
+    : null;
+
+  const mechanic = activeMaint?.assignedMechanic
+    ? users.find(
+        u => u.id === activeMaint.assignedMechanic
+      )
+    : null;
+
+  const toolHistory = borrowings
+    .filter(b => b.toolId === id)
+    .sort(
+      (a, b) =>
+        new Date(b.borrowedAt).getTime() -
+        new Date(a.borrowedAt).getTime()
+    );
 
   const [showBorrow, setShowBorrow] = useState(false);
   const [showReturn, setShowReturn] = useState(false);
   const [showDamage, setShowDamage] = useState(false);
   const [showQR, setShowQR] = useState(false);
+
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState('');
 
-  // Borrow form
   const [purpose, setPurpose] = useState('');
   const [duration, setDuration] = useState('120');
-  // Return form
-  const [returnCondition, setReturnCondition] = useState<ToolCondition>('GOOD');
+
+  const [returnCondition, setReturnCondition] =
+    useState<ToolCondition>('GOOD');
   const [returnNotes, setReturnNotes] = useState('');
-  // Damage form
+
   const [dmgType, setDmgType] = useState('');
   const [dmgDesc, setDmgDesc] = useState('');
-  const [dmgPriority, setDmgPriority] = useState<Priority>('MEDIUM');
+  const [dmgPriority, setDmgPriority] =
+    useState<Priority>('MEDIUM');
+
   const damageSubmittingRef = useRef(false);
 
-  if (!tool) return (
-    <div className="py-20 text-center">
-      <p className="text-lg font-display text-zinc-400">Tool not found.</p>
-      <p className="text-sm text-zinc-600 mt-1">The QR code may be invalid.</p>
-      <Btn variant="secondary" onClick={() => navigate('/tools')} className="mt-4">Back to Tools</Btn>
-    </div>
-  );
+  if (!tool) {
+    return (
+      <div className="py-20 text-center">
+        <p className="text-lg font-display text-zinc-400">
+          Tool not found.
+        </p>
+        <p className="text-sm text-zinc-600 mt-1">
+          The QR code may be invalid.
+        </p>
+        <Btn
+          variant="secondary"
+          onClick={() => navigate('/tools')}
+          className="mt-4"
+        >
+          Back to Tools
+        </Btn>
+      </div>
+    );
+  }
 
   const handleBorrow = async () => {
-    if (!currentUser || !purpose.trim()) {
+    if (!purpose.trim()) {
+      setError('Please enter the borrowing purpose.');
       return;
     }
 
-    setLoading(true);
+    setError(null);
     setSuccess('');
+    setLoading(true);
 
     try {
       await borrowTool(
@@ -62,26 +139,16 @@ export default function ToolDetail() {
 
       setShowBorrow(false);
       setPurpose('');
+      setDuration('120');
 
-      setSuccess(
-        `${tool.name} successfully borrowed.`,
-      );
+      setSuccess('Tool borrowed successfully.');
 
-      setTimeout(() => {
+      window.setTimeout(() => {
         setSuccess('');
       }, 4000);
     } catch (error) {
-      console.error(
-        'Failed to borrow tool:',
-        error,
-      );
-
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Failed to borrow tool.';
-
-      setSuccess(`Error: ${message}`);
+      console.error('Failed to borrow tool:', error);
+      setError(getUserFriendlyError(error));
     } finally {
       setLoading(false);
     }
@@ -89,42 +156,37 @@ export default function ToolDetail() {
 
   const handleReturn = async () => {
     if (!activeBorrow) {
+      setError('No active borrowing found for this tool.');
       return;
     }
 
-    setLoading(true);
+    setError(null);
     setSuccess('');
+    setLoading(true);
 
     try {
       await returnTool(
         activeBorrow.id,
         returnCondition,
-        returnNotes,
+        returnNotes.trim() || undefined,
       );
 
       setShowReturn(false);
-      setReturnNotes('');
       setReturnCondition('GOOD');
+      setReturnNotes('');
 
       setSuccess(
-        `${tool.name} returned successfully.`,
+        returnCondition === 'GOOD'
+          ? 'Tool returned successfully.'
+          : 'Tool returned and maintenance processing has been started.',
       );
 
-      setTimeout(() => {
+      window.setTimeout(() => {
         setSuccess('');
       }, 4000);
     } catch (error) {
-      console.error(
-        'Failed to return tool:',
-        error,
-      );
-
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Failed to return tool.';
-
-      setSuccess(`Error: ${message}`);
+      console.error('Failed to return tool:', error);
+      setError(getUserFriendlyError(error));
     } finally {
       setLoading(false);
     }
@@ -140,8 +202,9 @@ export default function ToolDetail() {
     }
 
     damageSubmittingRef.current = true;
-    setLoading(true);
+    setError(null);
     setSuccess('');
+    setLoading(true);
 
     try {
       await reportDamage(
@@ -152,24 +215,19 @@ export default function ToolDetail() {
       );
 
       setShowDamage(false);
+
       setDmgType('');
       setDmgDesc('');
       setDmgPriority('MEDIUM');
 
-      setSuccess('Damage report submitted.');
+      setSuccess('Damage report submitted successfully.');
 
-      setTimeout(() => {
+      window.setTimeout(() => {
         setSuccess('');
       }, 4000);
     } catch (error) {
       console.error('Failed to report damage:', error);
-
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Failed to submit damage report.';
-
-      setSuccess(`Error: ${message}`);
+      setError(getUserFriendlyError(error));
     } finally {
       damageSubmittingRef.current = false;
       setLoading(false);
@@ -259,13 +317,42 @@ export default function ToolDetail() {
         {/* Actions */}
         <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-zinc-800">
           {canBorrow && tool.status === 'AVAILABLE' && (
-            <Btn onClick={() => setShowBorrow(true)} size="lg" className="flex-1">Borrow Tool</Btn>
+            <Btn
+              onClick={() => {
+                setError(null);
+                setSuccess('');
+                setShowBorrow(true);
+              }}
+              size="lg"
+              className="flex-1"
+            >
+              Borrow Tool
+            </Btn>
           )}
           {tool.status === 'BORROWED' && canReturn && (
-            <Btn onClick={() => setShowReturn(true)} variant="secondary">Return Tool</Btn>
+            <Btn
+              onClick={() => {
+                setError(null);
+                setSuccess('');
+                setShowReturn(true);
+              }}
+              variant="secondary"
+            >
+              Return Tool
+            </Btn>
           )}
           {['AVAILABLE', 'BORROWED'].includes(tool.status) && currentUser?.role === 'EMPLOYEE' && (
-            <Btn onClick={() => setShowDamage(true)} variant="danger" size="sm">Report Damage</Btn>
+            <Btn
+              onClick={() => {
+                setError(null);
+                setSuccess('');
+                setShowDamage(true);
+              }}
+              variant="danger"
+              size="sm"
+            >
+              Report Damage
+            </Btn>
           )}
           <Btn variant="ghost" onClick={() => setShowQR(true)} size="sm">View QR Code</Btn>
         </div>
@@ -307,11 +394,48 @@ export default function ToolDetail() {
           <Textarea label="Purpose *" value={purpose} onChange={e => setPurpose(e.target.value)} rows={2} placeholder="Describe why you need this tool..." />
           <Select label="Duration" value={duration} onChange={e => setDuration(e.target.value)} options={DURATION_OPTS} />
           {duration && (
-            <p className="text-xs text-zinc-600">Expected return: {new Date(Date.now() + Number(duration) * 60000).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+            <p className="text-xs text-zinc-600">
+              Expected return: {new Date(
+                Date.now() + Number(duration) * 60000
+              ).toLocaleString('en-GB', {
+                day: '2-digit',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </p>
           )}
+
+          <ErrorMessage
+            message={error}
+            onClose={() => setError(null)}
+          />
+
+          <div className="flex gap-2 justify-end mt-2">
+            <Btn
+              variant="secondary"
+              onClick={() => setShowBorrow(false)}
+            >
+              Cancel
+            </Btn>
+
+            <Btn
+              onClick={() => void handleBorrow()}
+              loading={loading}
+              disabled={!purpose.trim() || loading}
+            >
+              Confirm Borrow
+            </Btn>
+          </div>
           <div className="flex gap-2 justify-end mt-2">
             <Btn variant="secondary" onClick={() => setShowBorrow(false)}>Cancel</Btn>
-            <Btn onClick={handleBorrow} loading={loading} disabled={!purpose}>Confirm Borrow</Btn>
+            <Btn
+              onClick={() => void handleBorrow()}
+              loading={loading}
+              disabled={!purpose.trim() || loading}
+            >
+              Confirm Borrow
+            </Btn>
           </div>
         </div>
       </Modal>
@@ -336,9 +460,22 @@ export default function ToolDetail() {
             </div>
           )}
           <Textarea label="Notes" value={returnNotes} onChange={e => setReturnNotes(e.target.value)} rows={2} placeholder="Any notes about the tool condition..." />
+            <ErrorMessage
+              message={error}
+              onClose={() => setError(null)}
+            />
           <div className="flex gap-2 justify-end mt-2">
             <Btn variant="secondary" onClick={() => setShowReturn(false)}>Cancel</Btn>
-            <Btn onClick={handleReturn} loading={loading} variant={returnCondition === 'DAMAGED' ? 'danger' : 'primary'}>
+            <Btn
+              onClick={() => void handleReturn()}
+              loading={loading}
+              variant={
+                returnCondition === 'DAMAGED'
+                  ? 'danger'
+                  : 'primary'
+              }
+              disabled={loading}
+            >
               Confirm Return
             </Btn>
           </div>
@@ -352,9 +489,20 @@ export default function ToolDetail() {
           <Textarea label="Description *" value={dmgDesc} onChange={e => setDmgDesc(e.target.value)} rows={3} placeholder="Describe the damage in detail..." />
           <Select label="Priority" value={dmgPriority} onChange={e => setDmgPriority(e.target.value as Priority)}
             options={[{ value: 'LOW', label: 'Low' }, { value: 'MEDIUM', label: 'Medium' }, { value: 'HIGH', label: 'High' }, { value: 'CRITICAL', label: 'Critical' }]} />
+            <ErrorMessage
+              message={error}
+              onClose={() => setError(null)}
+            />
           <div className="flex gap-2 justify-end mt-2">
             <Btn variant="secondary" onClick={() => setShowDamage(false)}>Cancel</Btn>
-            <Btn onClick={() => void handleDamageReport()} loading={loading} variant="danger" disabled={!dmgDesc.trim() || loading}>Submit Report</Btn>
+            <Btn
+              onClick={() => void handleDamageReport()}
+              loading={loading}
+              variant="danger"
+              disabled={!dmgDesc.trim() || loading}
+            >
+              Submit Report
+            </Btn>
           </div>
         </div>
       </Modal>

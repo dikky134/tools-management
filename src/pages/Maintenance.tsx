@@ -1,7 +1,25 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../store';
-import { PageHeader, StatusBadge, SearchInput, Tabs, Btn, Modal, Select, Textarea, ConfirmDialog, fmt, fmtDate, fmtCurrency } from '../components/ui';
-import type { Priority, MaintenanceStatus, RepairResult } from '../types';
+import {
+  PageHeader,
+  StatusBadge,
+  SearchInput,
+  Tabs,
+  Btn,
+  Modal,
+  Select,
+  Textarea,
+  fmt,
+  fmtDate,
+  fmtCurrency,
+} from '../components/ui';
+import type {
+  Priority,
+  MaintenanceStatus,
+  RepairResult,
+} from '../types';
+import { getUserFriendlyError } from '../utils/error';
+import ErrorMessage from '../components/ErrorMessage';
 
 export default function Maintenance() {
   const { maintenanceRequests, tools, users, currentUser, assignMechanic, startTask, updateTaskStatus, completeTask } = useApp();
@@ -14,6 +32,7 @@ export default function Maintenance() {
   const [assignMechId, setAssignMechId] = useState('');
   const [completeForm, setCompleteForm] = useState({ result: 'REPAIRED' as RepairResult, notes: '', cost: '', parts: '' });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const isAdmin = currentUser?.role === 'ADMIN';
   const isMechanic = currentUser?.role === 'MECHANIC';
@@ -62,17 +81,26 @@ export default function Maintenance() {
   const availMechanics = users.filter(u => u.role === 'MECHANIC' && u.mechanicStatus === 'AVAILABLE');
 
   const handleComplete = async () => {
-    if (!selectedId || !completeForm.notes.trim()) return;
+    if (!selectedId) {
+      setError('No maintenance task selected.');
+      return;
+    }
+
+    if (!completeForm.notes.trim()) {
+      setError('Please enter repair notes.');
+      return;
+    }
+
+    setError(null);
+    setLoading(true);
 
     try {
-      setLoading(true);
-
       await completeTask(
         selectedId,
         completeForm.result,
-        completeForm.notes,
+        completeForm.notes.trim(),
         Number(completeForm.cost) || 0,
-        completeForm.parts,
+        completeForm.parts.trim(),
       );
 
       setShowComplete(false);
@@ -86,15 +114,80 @@ export default function Maintenance() {
       });
     } catch (error) {
       console.error('Failed to complete repair:', error);
+      setError(getUserFriendlyError(error));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAssign = () => {
-    if (!selectedId || !assignMechId) return;
-    assignMechanic(selectedId, assignMechId);
-    setShowAssign(false);
+  const handleAssign = async () => {
+    if (!selectedId) {
+      setError('No maintenance task selected.');
+      return;
+    }
+
+    if (!assignMechId) {
+      setError('Please select a mechanic.');
+      return;
+    }
+
+    setError(null);
+    setLoading(true);
+
+    try {
+      await assignMechanic(
+        selectedId,
+        assignMechId,
+      );
+
+      setShowAssign(false);
+      setSelectedId(null);
+      setAssignMechId('');
+    } catch (error) {
+      console.error('Failed to assign mechanic:', error);
+      setError(getUserFriendlyError(error));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStartTask = async (
+    maintenanceId: string,
+  ) => {
+    setError(null);
+    setLoading(true);
+
+    try {
+      await startTask(maintenanceId);
+    } catch (error) {
+      console.error('Failed to start maintenance:', error);
+      setError(getUserFriendlyError(error));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTaskStatus = async (
+    maintenanceId: string,
+    status: MaintenanceStatus,
+  ) => {
+    setError(null);
+    setLoading(true);
+
+    try {
+      await updateTaskStatus(
+        maintenanceId,
+        status,
+      );
+    } catch (error) {
+      console.error(
+        'Failed to update maintenance status:',
+        error,
+      );
+      setError(getUserFriendlyError(error));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const PRIORITY_COLOR: Record<string, string> = { CRITICAL: '#f87171', HIGH: '#fb923c', MEDIUM: '#fbbf24', LOW: '#71717a' };
@@ -175,25 +268,85 @@ export default function Maintenance() {
 
               <div className="flex flex-wrap gap-2">
                 {isAdmin && m.status === 'PENDING' && (
-                  <Btn size="sm" onClick={() => { setSelectedId(m.id); setShowAssign(true); }}
-                    disabled={availMechanics.length === 0}>
-                    Assign Mechanic {availMechanics.length === 0 ? '(None Available)' : ''}
+                  <Btn
+                    size="sm"
+                    onClick={() => {
+                      setError(null);
+                      setAssignMechId('');
+                      setSelectedId(m.id);
+                      setShowAssign(true);
+                    }}
+                    disabled={availMechanics.length === 0}
+                  >
+                    Assign Mechanic
                   </Btn>
                 )}
                 {canAccept && (
-                  <Btn size="sm" onClick={() => void startTask(m.id)} >Accept & Start</Btn>
+                  <Btn
+                    size="sm"
+                    onClick={() => void handleStartTask(m.id)}
+                    loading={loading}
+                    disabled={loading}
+                  >
+                    Accept & Start
+                  </Btn>
                 )}
                 {canComplete && (
-                  <Btn size="sm" onClick={() => {setSelectedId(m.id); setShowComplete(true);}} >Complete Repair</Btn>
+                  <Btn
+                    size="sm"
+                    onClick={() => {
+                      setError(null);
+                      setSelectedId(m.id);
+                      setShowComplete(true);
+                    }}
+                  >
+                    Complete Repair
+                  </Btn>
                 )}
                 {m.status === 'IN_PROGRESS' && isMechanic && m.assignedMechanic === currentUser?.id && (
-                  <Btn size="sm" variant="secondary" onClick={() => updateTaskStatus(m.id, 'WAITING_FOR_PARTS')}>Waiting for Parts</Btn>
+                  <Btn
+                    size="sm"
+                    variant="secondary"
+                    onClick={() =>
+                      void handleTaskStatus(
+                        m.id,
+                        'WAITING_FOR_PARTS',
+                      )
+                    }
+                    loading={loading}
+                    disabled={loading}
+                  >
+                    Waiting for Parts
+                  </Btn>
                 )}
                 {m.status === 'WAITING_FOR_PARTS' && isMechanic && m.assignedMechanic === currentUser?.id && (
-                  <Btn size="sm" onClick={() => updateTaskStatus(m.id, 'IN_PROGRESS')}>Resume Repair</Btn>
+                  <Btn
+                    size="sm"
+                    onClick={() =>
+                      void handleTaskStatus(
+                        m.id,
+                        'IN_PROGRESS',
+                      )
+                    }
+                    loading={loading}
+                    disabled={loading}
+                  >
+                    Resume Repair
+                  </Btn>
                 )}
                 {isAdmin && m.status === 'ASSIGNED' && (
-                  <Btn size="sm" variant="secondary" onClick={() => { setSelectedId(m.id); setShowAssign(true); }}>Reassign</Btn>
+                  <Btn
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setError(null);
+                      setAssignMechId('');
+                      setSelectedId(m.id);
+                      setShowAssign(true);
+                    }}
+                  >
+                    Reassign
+                  </Btn>
                 )}
               </div>
             </div>
@@ -231,6 +384,14 @@ export default function Maintenance() {
               ))}
             </div>
           )}
+          <ErrorMessage
+            message={error}
+            onClose={() => setError(null)}
+          />
+          <ErrorMessage
+            message={error}
+            onClose={() => setError(null)}
+          />
           <div className="flex gap-2 justify-end mt-2">
             <Btn variant="secondary" onClick={() => setShowAssign(false)}>Cancel</Btn>
             <Btn onClick={handleAssign} disabled={!assignMechId}>Assign</Btn>

@@ -112,6 +112,15 @@ export interface ActivityLog {
 export interface AppState {
   currentUser: User | null;
   users: User[];
+
+  mechanics: {
+    id: string;
+    full_name: string;
+    employee_id: string;
+    department: string | null;
+    mechanic_status: MechanicAvailability;
+  }[];
+
   tools: Tool[];
   categories: ToolCategory[];
   borrowings: Borrowing[];

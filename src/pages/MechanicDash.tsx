@@ -5,7 +5,13 @@ import { StatusBadge, Btn, StatCard, fmtDate } from '../components/ui';
 import type { MechanicAvailability, MaintenanceRequest } from '../types';
 
 export default function MechanicDash() {
-  const { currentUser, maintenanceRequests, tools, acceptTask, startTask, updateMechanicStatus } = useApp();
+  const {
+    currentUser,
+    maintenanceRequests,
+    tools,
+    startTask,
+    updateMechanicStatus,
+  } = useApp();
   const navigate = useNavigate();
   const [statusError, setStatusError] = useState<string | null>(null);
 

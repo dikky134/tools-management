@@ -27,12 +27,12 @@ import {
   completeMaintenance,
   getMaintenanceRequests,
   getMyMaintenanceTasks, } from './services/maintenance.service';
-import { 
-  getUsers, 
-  createUser, 
-  updateUser as updateUserService, 
+import {
+  getUsers,
+  createUser,
+  updateUser as updateUserService,
   updateUserStatus,
-  updateMyProfile
+  updateMyProfile as updateMyProfileService,
 } from './services/users.service';
 import {
   reportDamage as reportDamageService,
@@ -63,8 +63,8 @@ interface AppContextType extends AppState {
   dataLoading: boolean;
   borrowTool: (toolId: string, purpose: string, durationMinutes: number) => Promise<void>;
   returnTool: (borrowingId: string, condition: ToolCondition, notes?: string) => Promise<void>;
-  reportDamage: (toolId: string, reportedBy: string, damageType: string, description: string, priority: Priority) => Promise<void>;
-  createMaintenanceRequest: (toolId: string, reportedBy: string, description: string, priority: Priority) => Promise<string>;
+  reportDamage: (toolId: string, damageType: string, description: string, priority: Priority, photoUrl?: string,) => Promise<void>;
+  createMaintenanceRequest: (toolId: string, description: string, priority: Priority,) => Promise<string>;
   assignMechanic: (maintenanceId: string, mechanicId: string) => Promise<void>;
   startTask: (maintenanceId: string) => Promise<void>;
   updateTaskStatus: (maintenanceId: string, status: MaintenanceStatus, notes?: string) => Promise<void>;
@@ -808,6 +808,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         addUser,
         updateUser,
+        updateUserStatus: updateUserStatusHandler,
+        updateMyProfile,
 
         markNotificationRead:
           handleMarkNotificationRead,
