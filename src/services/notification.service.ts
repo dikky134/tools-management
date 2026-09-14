@@ -11,22 +11,19 @@ export async function getMyNotifications() {
     return [];
   }
 
-  const { data, error } =
-    await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', {
-        ascending: false,
-      });
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at', {
+      ascending: false,
+    });
 
   if (error) {
     throw error;
   }
 
-  return (
-    data as DatabaseNotificationRow[]
-  ).map(mapNotification);
+  return (data as DatabaseNotificationRow[]).map(mapNotification);
 }
 
 export async function markNotificationAsRead(

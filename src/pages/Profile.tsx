@@ -4,7 +4,14 @@ import { Btn, Input, Select } from '../components/ui';
 import type { MechanicAvailability } from '../types';
 
 export default function Profile() {
-  const { currentUser, borrowings, maintenanceRequests, updateUser, updateMechanicStatus } = useApp();
+  const { 
+    currentUser, 
+    borrowings, 
+    maintenanceRequests, 
+    updateUser, 
+    updateMechanicStatus,
+    updateMyProfile,
+  } = useApp();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ name: currentUser?.name ?? '', phone: currentUser?.phone ?? '', email: currentUser?.email ?? '' });
   const [saved, setSaved] = useState(false);
@@ -14,11 +21,25 @@ export default function Profile() {
   const myBorrows = borrowings.filter(b => b.borrowerId === currentUser.id);
   const myTasks = maintenanceRequests.filter(m => m.assignedMechanic === currentUser.id);
 
-  const handleSave = () => {
-    updateUser(currentUser.id, form);
-    setEditing(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+  const handleSave = async () => {
+    try {
+      await updateMyProfile(
+        form.name,
+        form.phone,
+      );
+
+      setEditing(false);
+      setSaved(true);
+
+      setTimeout(() => {
+        setSaved(false);
+      }, 3000);
+    } catch (error) {
+      console.error(
+        'Failed to update profile:',
+        error,
+      );
+    }
   };
 
   const ROLE_COLOR: Record<string, string> = { ADMIN: '#f59e0b', EMPLOYEE: '#60a5fa', MECHANIC: '#4ade80' };
@@ -70,10 +91,18 @@ export default function Profile() {
         ) : (
           <div className="space-y-4">
             <Input label="Full Name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-            <Input label="Email" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+            <Input 
+              label="Email" 
+              type="email" 
+              value={form.email} 
+              disabled
+              // onChange={e => setForm(f => ({ ...f, email: e.target.value }))} 
+            />
             <Input label="Phone" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
             <div className="flex gap-2">
-              <Btn onClick={handleSave}>Save Changes</Btn>
+              <Btn onClick={() => void handleSave()}>
+                Save Changes
+              </Btn>
               <Btn variant="secondary" onClick={() => setEditing(false)}>Cancel</Btn>
             </div>
           </div>
@@ -85,12 +114,11 @@ export default function Profile() {
         <div className="bg-zinc-900 border border-zinc-800 rounded-sm p-4">
           <p className="text-xs font-mono text-zinc-500 uppercase tracking-widest mb-3">Availability Status</p>
           <div className="flex gap-2">
-            {(['AVAILABLE', 'BUSY', 'OFF_DUTY'] as MechanicAvailability[]).map(s => (
+            {(['AVAILABLE', 'OFF_DUTY'] as MechanicAvailability[]).map(s => (
               <button key={s} onClick={() => updateMechanicStatus(currentUser.id, s)}
                 className={`flex-1 py-2 text-xs font-mono rounded-sm border transition-colors ${
                   currentUser.mechanicStatus === s
                     ? s === 'AVAILABLE' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                      : s === 'BUSY' ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
                       : 'bg-zinc-800 border-zinc-700 text-zinc-400'
                     : 'bg-zinc-800 border-zinc-700 text-zinc-600 hover:border-zinc-600'
                 }`}>

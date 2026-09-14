@@ -4,6 +4,7 @@ import React, {
   useState,
   useCallback,
   useEffect,
+  useRef,
 } from 'react';
 import { supabase } from './lib/supabase';
 import {
@@ -26,7 +27,13 @@ import {
   completeMaintenance,
   getMaintenanceRequests,
   getMyMaintenanceTasks, } from './services/maintenance.service';
-import { getUsers, createUser, updateUser as updateUserService, updateUserStatus } from './services/users.service';
+import { 
+  getUsers, 
+  createUser, 
+  updateUser as updateUserService, 
+  updateUserStatus,
+  updateMyProfile
+} from './services/users.service';
 import {
   reportDamage as reportDamageService,
   getDamageReports,
@@ -73,6 +80,7 @@ interface AppContextType extends AppState {
   updateUserStatus: (id: string, status: 'ACTIVE' | 'INACTIVE') => Promise<void>;
   markNotificationRead: (id: string) => Promise<void>;
   markAllRead: (userId: string) => Promise<void>;
+  updateMyProfile: (fullName: string, phone: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -98,6 +106,7 @@ function addNotif(notifs: Notification[], userId: string, type: Notification['ty
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [authLoading, setAuthLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
+  const loadRequestIdRef = useRef(0);
   const [state, setState] = useState<AppState>({
     currentUser: null,
     users: [],
@@ -114,14 +123,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const currentUserId = state.currentUser?.id;
   const currentUserRole = state.currentUser?.role;
 
+  const updateMyProfile = useCallback(
+    async (
+      fullName: string,
+      phone: string,
+    ) => {
+      await updateMyProfileService(
+        fullName,
+        phone,
+      );
+
+      const user = await getProfile(
+        currentUserId!,
+      );
+
+      setState(prev => ({
+        ...prev,
+        currentUser: user,
+      }));
+    },
+    [currentUserId],
+  );
+
   const loadApplicationData = useCallback(
     async () => {
+      const requestId = ++loadRequestIdRef.current;
       setDataLoading(true);
 
       try {
-        const currentUser = state.currentUser;
-
-        if (!currentUser) {
+        if (!currentUserId || !currentUserRole) {
           return;
         }
 
@@ -141,28 +171,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           getTools(),
           getCategories(),
 
-          currentUser.role === 'ADMIN'
+          currentUserRole === 'ADMIN'
             ? getAllBorrowings()
             : getMyBorrowings(),
 
-          currentUser.role === 'ADMIN'
+          currentUserRole === 'ADMIN'
             ? getMaintenanceRequests()
             : getMyMaintenanceTasks(),
 
           getDamageReports(),
           getMyNotifications(),
 
-          currentUser.role === 'ADMIN'
+          currentUserRole === 'ADMIN'
             ? getActivityLogs()
             : Promise.resolve([]),
         ]);
 
+        if (requestId !== loadRequestIdRef.current) {
+          return;
+        }
+
         setState(prev => {
+
           const updatedCurrentUser =
             prev.currentUser
               ? users.find(
-                  user =>
-                    user.id === prev.currentUser?.id,
+                  user => user.id === prev.currentUser?.id
                 ) ?? prev.currentUser
               : null;
 
@@ -183,7 +217,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         console.error(
           'Failed to load application data:',
-          error,
+          error
         );
       } finally {
         setDataLoading(false);
@@ -232,12 +266,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         async payload => {
           console.log(
             'MECHANIC STATUS REALTIME:',
-            payload,
+            payload
           );
 
           try {
-            const mechanics =
-              await getActiveMechanics();
+            const mechanics = await getActiveMechanics();
 
             setState(prev => ({
               ...prev,
@@ -246,15 +279,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           } catch (error) {
             console.error(
               'Failed to refresh mechanic statuses:',
-              error,
+              error
             );
           }
-        },
+        }
       )
       .subscribe(status => {
         console.log(
           'Mechanic status subscription:',
-          status,
+          status
         );
       });
 
@@ -338,16 +371,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  const refreshNotifications = useCallback(async () => {
+    try {
+      const notifications = await getMyNotifications();
+
+      setState(prev => ({
+        ...prev,
+        notifications,
+      }));
+    } catch (error) {
+      console.error(
+        'Failed to refresh notifications:',
+        error,
+      );
+    }
+  }, []);
+
   useEffect(() => {
     if (!currentUserId) {
       return;
     }
 
     void loadApplicationData();
-  }, [
-    currentUserId,
-    loadApplicationData,
-  ]);
+  }, [currentUserId, loadApplicationData]);
 
   useEffect(() => {
     if (!currentUserId) {
@@ -378,9 +424,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       subscribeToNotificationChanges(
         currentUserId,
         () => {
-          void loadApplicationData();
+          void refreshNotifications();
         },
       );
+
     const cleanupDamage =
       subscribeToDamageChanges(() => {
         void loadApplicationData();
@@ -394,10 +441,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       cleanupNotifications();
       cleanupDamage();
     };
-  }, [
+    }, [
     currentUserId,
     loadApplicationData,
-  ]);
+    refreshNotifications,
+    ]);
 
   const handleBorrowTool = useCallback(
     async (

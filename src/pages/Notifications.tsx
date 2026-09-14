@@ -30,7 +30,7 @@ export default function Notifications() {
   const myNotifs = notifications
     .filter(n => n.userId === currentUser.id)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
+    
   const unreadCount = myNotifs.filter(n => !n.read).length;
 
   return (

@@ -53,6 +53,23 @@ export async function createUser(
   return data.userId;
 }
 
+export async function updateMyProfile(
+  fullName: string,
+  phone: string,
+): Promise<void> {
+  const { error } = await supabase.rpc(
+    'update_my_profile',
+    {
+      p_full_name: fullName,
+      p_phone: phone,
+    },
+  );
+
+  if (error) {
+    throw error;
+  }
+}
+
 export async function updateUser(
   userId: string,
   updates: Partial<User>,
